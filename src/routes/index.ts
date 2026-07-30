@@ -1,0 +1,44 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes';
+import adminRoutes from './admin.routes';
+import attendanceRoutes from './attendance.routes';
+import leaveRoutes from './leave.routes';
+import busRoutes from './bus.routes';
+import aiRoutes from './ai.routes';
+import studentRoutes from './student.routes';
+import parentRoutes from './parent.routes';
+import eventRoutes from './event.routes';
+import gradeRoutes from './grade.routes';
+import teacherRoutes from './teacher.routes';
+import roleRoutes from './role.routes';
+import vpRoutes from './vp.routes';
+import notificationRoutes from './notification.routes';
+import admissionRoutes from './admission.routes';
+import courseRoutes from './course.routes';
+import issueRoutes from './issue.routes';
+import scheduleRoutes from './schedule.routes';
+import assessmentRoutes from './assessment.routes';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/admin', adminRoutes);
+router.use('/attendance', attendanceRoutes);
+router.use('/leave', leaveRoutes);
+router.use('/bus', busRoutes);
+router.use('/ai', aiRoutes);
+router.use('/student', studentRoutes);
+router.use('/parent', parentRoutes);
+router.use('/events', eventRoutes);
+router.use('/grades', gradeRoutes);
+router.use('/teacher', teacherRoutes);
+router.use('/admin/roles', roleRoutes);
+router.use('/vp', vpRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/admissions', admissionRoutes);
+router.use('/courses', courseRoutes);
+router.use('/issues', issueRoutes);
+router.use('/schedule', scheduleRoutes);
+router.use('/assessments', assessmentRoutes);
+
+export default router;

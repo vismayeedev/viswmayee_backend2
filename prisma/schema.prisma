@@ -1,0 +1,530 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  PRINCIPAL
+  VICE_PRINCIPAL
+  TEACHER
+  STAFF
+  PARENT
+  STUDENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING_APPROVAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED_BY_TEACHER
+  APPROVED_BY_VP
+  APPROVED
+  REJECTED
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  MATERNITY
+  PATERNITY
+  UNPAID
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum NoticeTarget {
+  ALL
+  TEACHERS
+  PARENTS
+  STAFF
+  CLASS
+}
+
+model User {
+  id                  String             @id @default(uuid())
+  email               String             @unique
+  password            String
+  role                Role
+  status              UserStatus         @default(PENDING_APPROVAL)
+  firstName           String
+  lastName            String
+  phone               String?
+  profileImage        String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  
+  // Auth security
+  refreshTokens       RefreshToken[]
+  resetToken          String?
+  resetTokenExpiry    DateTime?
+  
+  // Profile relations
+  adminProfile        AdminProfile?
+  principalProfile    PrincipalProfile?
+  vpProfile           VicePrincipalProfile?
+  teacherProfile      TeacherProfile?
+  staffProfile        StaffProfile?
+  parentProfile       ParentProfile?
+  studentProfile      StudentProfile?
+
+  // Notifications
+  notifications       NotificationRecipient[]
+  sentNotifications   Notification[]     @relation("SentNotifications")
+  recordedAttendance  Attendance[]       @relation("RecordedBy")
+
+  // Custom Role Management
+  customRoleId        String?
+  customRole          CustomRole?        @relation(fields: [customRoleId], references: [id])
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AdminProfile {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PrincipalProfile {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VicePrincipalProfile {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TeacherProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId     String         @unique
+  qualification  String
+  specialization String
+  
+  // Relations
+  classrooms     Classroom[]    @relation("ClassTeacher")
+  subjects       SubjectTeacher[]
+  schedules      Schedule[]
+  leaveRequests  LeaveRequest[] @relation("TeacherLeave")
+  notices        Notice[]
+  moments        Moment[]
+  courses        Course[]
+}
+
+model StaffProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId     String         @unique
+  roleType       String         // e.g., "DRIVER", "CONDUCTOR", "SECURITY"
+  
+  // Relations
+  assignedRoute  BusRoute?      @relation("DriverRoute")
+  leaveRequests  LeaveRequest[] @relation("StaffLeave")
+}
+
+model ParentProfile {
+  id             String           @id @default(uuid())
+  userId         String           @unique
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profession     String?
+  address        String
+  
+  // Relations
+  students       StudentProfile[]
+  leaveRequests  LeaveRequest[]   @relation("ParentLeave")
+}
+
+model Classroom {
+  id             String           @id @default(uuid())
+  name           String           // e.g., "Grade 10A"
+  gradeLevel     Int
+  teacherId      String?
+  teacher        TeacherProfile?  @relation("ClassTeacher", fields: [teacherId], references: [id])
+  
+  // Relations
+  students       StudentProfile[]
+  schedules      Schedule[]
+  notices        Notice[]
+  moments        Moment[]
+  courses        Course[]
+
+  @@index([teacherId])
+}
+
+model Subject {
+  id             String           @id @default(uuid())
+  name           String           @unique
+  code           String           @unique
+  
+  // Relations
+  teachers       SubjectTeacher[]
+  schedules      Schedule[]
+  courses        Course[]
+}
+
+model SubjectTeacher {
+  id        String         @id @default(uuid())
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId])
+}
+
+model StudentProfile {
+  id             String           @id @default(uuid())
+  userId         String           @unique
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admissionNo    String           @unique
+  dob            DateTime
+  gender         Gender
+  classroomId    String
+  classroom      Classroom        @relation(fields: [classroomId], references: [id])
+  parentId       String
+  parent         ParentProfile    @relation(fields: [parentId], references: [id])
+  
+  // Bus tracking
+  busRouteId     String?
+  busRoute       BusRoute?        @relation(fields: [busRouteId], references: [id])
+  
+  // Relations
+  attendance     Attendance[]     @relation("StudentAttendance")
+  grades         GradeReport[]
+  leaveRequests  LeaveRequest[]   @relation("StudentLeave")
+  busAttendance  BusAttendance[]
+
+  @@index([classroomId])
+  @@index([parentId])
+  @@index([busRouteId])
+}
+
+model Schedule {
+  id          String         @id @default(uuid())
+  classroomId String
+  classroom   Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int            // 1 (Monday) to 7 (Sunday)
+  startTime   String         // HH:MM
+  endTime     String         // HH:MM
+  roomNo      String?
+
+  @@index([classroomId])
+  @@index([teacherId])
+}
+
+model Attendance {
+  id            String           @id @default(uuid())
+  studentId     String?
+  student       StudentProfile?  @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  teacherId     String?          // covers other roles via User reference
+  teacher       User?            @relation("RecordedBy", fields: [teacherId], references: [id], onDelete: Cascade)
+  date          DateTime
+  status        AttendanceStatus
+  remarks       String?
+  recordedById  String           // User ID who recorded it
+  createdAt     DateTime         @default(now())
+
+  @@unique([studentId, date])
+  @@unique([teacherId, date])
+  @@index([date])
+}
+
+model LeaveRequest {
+  id              String           @id @default(uuid())
+  userId          String           // Requestor
+  userRole        Role
+  leaveType       LeaveType
+  startDate       DateTime
+  endDate         DateTime
+  reason          String
+  status          LeaveStatus      @default(PENDING)
+  rejectionReason String?
+  
+  // Flow and Approvers
+  assignedTeacherId String?        // For parent request
+  assignedTeacher   TeacherProfile? @relation("TeacherLeave", fields: [assignedTeacherId], references: [id])
+  assignedVPId      String?        // Vice Principal
+  assignedPrincipalId String?      // Principal
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Self relations for role constraints
+  parentProfileId String?
+  parentProfile   ParentProfile?   @relation("ParentLeave", fields: [parentProfileId], references: [id])
+  staffProfileId  String?
+  staffProfile    StaffProfile?    @relation("StaffLeave", fields: [staffProfileId], references: [id])
+  studentProfileId String?
+  studentProfile  StudentProfile?  @relation("StudentLeave", fields: [studentProfileId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model GradeReport {
+  id          String         @id @default(uuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  term        String         // e.g., "Term 1", "Finals"
+  academicYear String        // e.g., "2025-2026"
+  subject     String
+  grade       String         // A, B, C, etc.
+  score       Float
+  remarks     String?
+  publishedAt DateTime       @default(now())
+
+  @@index([studentId])
+}
+
+model BusRoute {
+  id          String           @id @default(uuid())
+  routeName   String
+  routeNo     String           @unique
+  startPoint  String
+  endPoint    String
+  driverId    String?          @unique
+  driver      StaffProfile?    @relation("DriverRoute", fields: [driverId], references: [id])
+  
+  // GPS State (Live)
+  latitude    Float?
+  longitude   Float?
+  lastUpdated DateTime?
+  etaMinutes  Int?
+  
+  // Relations
+  students    StudentProfile[]
+  attendance  BusAttendance[]
+}
+
+model BusAttendance {
+  id          String           @id @default(uuid())
+  busRouteId  String
+  busRoute    BusRoute         @relation(fields: [busRouteId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     StudentProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date        DateTime         @default(now())
+  type        String           // "PICKUP" or "DROP"
+  status      AttendanceStatus
+  recordedAt  DateTime         @default(now())
+
+  @@index([busRouteId])
+  @@index([studentId])
+}
+
+model Notice {
+  id          String           @id @default(uuid())
+  title       String
+  content     String
+  target      NoticeTarget
+  classroomId String?          // Optional: Target specific class
+  classroom   Classroom?       @relation(fields: [classroomId], references: [id])
+  authorId    String
+  author      TeacherProfile?  @relation(fields: [authorId], references: [id])
+  createdAt   DateTime         @default(now())
+
+  @@index([target])
+}
+
+model Moment {
+  id          String         @id @default(uuid())
+  caption     String
+  mediaUrl    String
+  classroomId String
+  classroom   Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+
+  @@index([classroomId])
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String                   @id @default(uuid())
+  title     String
+  message   String
+  channel   String                   // "IN_APP", "EMAIL", "SMS", "PUSH", "ALL"
+  senderId  String?
+  sender    User?                    @relation("SentNotifications", fields: [senderId], references: [id])
+  createdAt DateTime                 @default(now())
+  
+  recipients NotificationRecipient[]
+}
+
+model NotificationRecipient {
+  id             String       @id @default(uuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+
+  @@index([recipientId])
+  @@index([isRead])
+}
+
+model AISession {
+  id        String       @id @default(uuid())
+  userId    String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  messages  AIMessage[]
+
+  @@index([userId])
+}
+
+model AIMessage {
+  id        String    @id @default(uuid())
+  sessionId String
+  session   AISession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String    // "user" or "assistant"
+  content   String
+  createdAt DateTime  @default(now())
+
+  @@index([sessionId])
+}
+
+model CustomRole {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  permissions Permission[]
+  users       User[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Permission {
+  id           String      @id @default(uuid())
+  feature      String      // e.g. "View Child", "Attendance", "Leave Request", "Leave Approval", "Events", "User Management", "Role Management"
+  accessType   String      // e.g. "checked", "View", "Manage", "Transport", "Monitor", "Approve", "Final Approve", "Full", "cross"
+  roleId       String
+  role         CustomRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([roleId, feature])
+}
+
+model Course {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  classroomId String
+  classroom   Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  modules     CourseModule[]
+
+  @@index([classroomId])
+  @@index([teacherId])
+  @@index([subjectId])
+}
+
+model CourseModule {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int      @default(0)
+  content     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssueCategory {
+  ACADEMIC
+  BEHAVIOUR
+  INFRASTRUCTURE
+  TEACHER_CONCERN
+  ADMINISTRATIVE
+  SAFETY
+  OTHER
+}
+
+model Issue {
+  id          String        @id @default(uuid())
+  title       String
+  description String
+  category    IssueCategory
+  status      IssueStatus   @default(OPEN)
+  priority    String        @default("MEDIUM") // LOW, MEDIUM, HIGH
+  raisedById  String
+  raisedByRole Role
+  // Resolution
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolution   String?
+  // Optional: link to a student
+  studentId    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([raisedById])
+  @@index([status])
+  @@index([category])
+}
+
