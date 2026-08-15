@@ -34,7 +34,7 @@ router.post(
   authorizeRoles(Role.ADMIN, Role.PRINCIPAL, Role.VICE_PRINCIPAL),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { classroomId, subjectId, teacherId, dayOfWeek, startTime, endTime, roomNo } = req.body;
+      const { classroomId, subjectId, teacherId, dayOfWeek, startTime, endTime, roomNo, applyToAllWeekdays } = req.body;
 
       if (!classroomId || !subjectId || !teacherId || !dayOfWeek || !startTime || !endTime) {
         return next(new AppError('All fields (classroomId, subjectId, teacherId, dayOfWeek, startTime, endTime) are required', 400));
@@ -52,6 +52,24 @@ router.post(
       const teacherExists = await TeacherProfile.findById(teacherId);
       if (!teacherExists) return next(new AppError('Teacher profile not found', 404));
 
+      if (applyToAllWeekdays) {
+        const weekdays = [1, 2, 3, 4, 5]; // Mon to Fri
+        const createdSchedules = [];
+        for (const day of weekdays) {
+          const newSchedule = await Schedule.create({
+            classroomId,
+            subjectId,
+            teacherId,
+            dayOfWeek: day,
+            startTime,
+            endTime,
+            roomNo,
+          });
+          createdSchedules.push(newSchedule);
+        }
+        return res.status(201).json({ status: 'success', data: createdSchedules, message: 'Schedule slot added for all weekdays (Monday through Friday)' });
+      }
+
       const newSchedule = await Schedule.create({
         classroomId,
         subjectId,
@@ -63,6 +81,56 @@ router.post(
       });
 
       res.status(201).json({ status: 'success', data: newSchedule });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 2b. Bulk copy Monday's timetable to all weekdays (Tuesday - Friday)
+router.post(
+  '/copy-monday',
+  authorizeRoles(Role.ADMIN, Role.PRINCIPAL, Role.VICE_PRINCIPAL),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { classroomId } = req.body;
+      if (!classroomId) {
+        return next(new AppError('classroomId is required', 400));
+      }
+
+      // Find all Monday slots (dayOfWeek = 1)
+      const mondaySlots = await Schedule.find({ classroomId, dayOfWeek: 1 });
+      if (mondaySlots.length === 0) {
+        return next(new AppError('No Monday schedule slots found for this classroom. Create Monday timetable first.', 400));
+      }
+
+      // Delete existing slots for Tuesday(2), Wednesday(3), Thursday(4), Friday(5)
+      await Schedule.deleteMany({ classroomId, dayOfWeek: { $in: [2, 3, 4, 5] } });
+
+      const newSlots = [];
+      const weekdays = [2, 3, 4, 5];
+
+      for (const day of weekdays) {
+        for (const slot of mondaySlots) {
+          newSlots.push({
+            classroomId: slot.classroomId,
+            subjectId: slot.subjectId,
+            teacherId: slot.teacherId,
+            dayOfWeek: day,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            roomNo: slot.roomNo,
+          });
+        }
+      }
+
+      const created = await Schedule.insertMany(newSlots);
+
+      res.status(201).json({
+        status: 'success',
+        message: `Successfully copied Monday's timetable to Tuesday through Friday! (${mondaySlots.length} slots copied per day)`,
+        data: created,
+      });
     } catch (err) {
       next(err);
     }

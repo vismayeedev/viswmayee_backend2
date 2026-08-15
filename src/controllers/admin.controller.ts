@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { AdminService } from '../services/admin.service';
 import { UserRepository } from '../repositories/user.repository';
 import { AuthenticatedRequest } from '../middlewares/auth';
-import { Role } from '../models';
+import { Role, User } from '../models';
+import { AppError } from '../middlewares/error';
 import bcrypt from 'bcryptjs';
 
 const adminService = new AdminService();
@@ -85,8 +86,23 @@ export class AdminController {
   async updateUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { firstName, lastName, phone, status } = req.body;
-      const updated = await userRepository.updateUser(id, { firstName, lastName, phone, status });
+      const { firstName, lastName, phone, status, email } = req.body;
+
+      // If email is being updated, check it's not already taken by another user
+      if (email) {
+        const existing = await User.findOne({ email, _id: { $ne: id } });
+        if (existing) {
+          return next(new AppError('Email is already in use by another account', 400));
+        }
+      }
+
+      const updated = await userRepository.updateUser(id, {
+        firstName,
+        lastName,
+        phone,
+        status,
+        ...(email ? { email } : {}),
+      });
       res.status(200).json({ status: 'success', data: updated });
     } catch (err) {
       next(err);
