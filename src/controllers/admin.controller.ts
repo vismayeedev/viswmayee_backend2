@@ -86,7 +86,7 @@ export class AdminController {
   async updateUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { firstName, lastName, phone, status, email } = req.body;
+      const { firstName, lastName, phone, status, email, password, newPassword } = req.body;
 
       // If email is being updated, check it's not already taken by another user
       if (email) {
@@ -96,14 +96,86 @@ export class AdminController {
         }
       }
 
-      const updated = await userRepository.updateUser(id, {
+      const updateData: any = {
         firstName,
         lastName,
         phone,
         status,
         ...(email ? { email } : {}),
-      });
+      };
+
+      const rawPassword = newPassword || password;
+      if (rawPassword) {
+        if (rawPassword.length < 6) {
+          return next(new AppError('Password must be at least 6 characters long', 400));
+        }
+        updateData.password = await bcrypt.hash(rawPassword, 10);
+        updateData.resetToken = null;
+        updateData.resetTokenExpiry = null;
+        await userRepository.deleteUserRefreshTokens(id);
+      }
+
+      if (status === 'INACTIVE') {
+        await userRepository.deleteUserRefreshTokens(id);
+      }
+
+      const updated = await userRepository.updateUser(id, updateData);
       res.status(200).json({ status: 'success', data: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async disableUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const updated = await userRepository.updateUser(id, { status: 'INACTIVE' });
+      if (!updated) {
+        return next(new AppError('User not found', 404));
+      }
+      await userRepository.deleteUserRefreshTokens(id);
+      res.status(200).json({ status: 'success', message: 'User account disabled (tenure completed).', data: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async enableUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const updated = await userRepository.updateUser(id, { status: 'ACTIVE' });
+      if (!updated) {
+        return next(new AppError('User not found', 404));
+      }
+      res.status(200).json({ status: 'success', message: 'User account activated successfully.', data: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async resetUserPassword(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { newPassword, password } = req.body;
+      const targetPassword = newPassword || password;
+
+      if (!targetPassword || targetPassword.length < 6) {
+        return next(new AppError('Password must be at least 6 characters long', 400));
+      }
+
+      const hashedPassword = await bcrypt.hash(targetPassword, 10);
+      const updated = await userRepository.updateUser(id, {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+      });
+
+      if (!updated) {
+        return next(new AppError('User not found', 404));
+      }
+
+      await userRepository.deleteUserRefreshTokens(id);
+      res.status(200).json({ status: 'success', message: 'User password reset successfully' });
     } catch (err) {
       next(err);
     }

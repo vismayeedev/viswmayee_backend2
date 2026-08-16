@@ -18,6 +18,9 @@ router.post('/approve-user', controller.approveUser);
 router.get('/users', controller.getUsers);
 router.post('/users', controller.createUser);
 router.put('/users/:id', controller.updateUser);
+router.post('/users/:id/disable', controller.disableUser);
+router.post('/users/:id/enable', controller.enableUser);
+router.post('/users/:id/reset-password', controller.resetUserPassword);
 router.delete('/users/:id', controller.deleteUser);
 router.get('/report', controller.getReport);
 

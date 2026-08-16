@@ -209,4 +209,25 @@ export class AuthService {
     await userRepository.deleteUserRefreshTokens(userId);
     return { success: true };
   }
+
+  async resetMyPassword(userId: string, newPass: string) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    if (!newPass || newPass.length < 6) {
+      throw new AppError('Password must be at least 6 characters long', 400);
+    }
+
+    const hashedPassword = await bcrypt.hash(newPass, 10);
+    await userRepository.updateUser(user.id, {
+      password: hashedPassword,
+      resetToken: null,
+      resetTokenExpiry: null,
+    });
+
+    await userRepository.deleteUserRefreshTokens(userId);
+    return { success: true };
+  }
 }

@@ -81,6 +81,17 @@ export class AuthController {
     }
   }
 
+  async resetMyPassword(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { newPassword } = req.body;
+      await authService.resetMyPassword(userId, newPassword);
+      res.status(200).json({ status: 'success', message: 'Password updated successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async getCurrentUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       // Returns current user based on JWT token

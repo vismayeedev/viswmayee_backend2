@@ -20,8 +20,8 @@ const router = Router();
 
 router.use(authenticateJWT);
 
-// 1. Create a new Assessment (Teacher / Admin)
-router.post('/', authorizeRoles(Role.TEACHER, Role.ADMIN), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+// 1. Create a new Assessment (Teacher / Admin / VP / Principal)
+router.post('/', authorizeRoles(Role.TEACHER, Role.ADMIN, Role.VICE_PRINCIPAL, Role.PRINCIPAL), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
     const { title, description, type, classroomId, subjectId, dueDate, maxMarks, attachmentUrl } = req.body;
@@ -30,15 +30,21 @@ router.post('/', authorizeRoles(Role.TEACHER, Role.ADMIN), async (req: Authentic
       return next(new AppError('Title, classroom, subject, and due date are required', 400));
     }
 
-    let teacherId = '';
-    if (req.user!.role === Role.TEACHER) {
-      const teacher = await TeacherProfile.findOne({ userId });
-      if (!teacher) return next(new AppError('Teacher profile not found', 404));
-      teacherId = teacher.id;
-    } else {
-      // Admin creating on behalf of classroom's teacher
-      const classroom = await Classroom.findById(classroomId);
-      teacherId = classroom?.teacherId || '';
+    let teacherId = req.body.teacherId || '';
+    if (!teacherId) {
+      if (req.user!.role === Role.TEACHER) {
+        const teacher = await TeacherProfile.findOne({ userId });
+        if (!teacher) return next(new AppError('Teacher profile not found', 404));
+        teacherId = teacher.id;
+      } else {
+        // Admin / VP / Principal creating on behalf of classroom
+        const classroom = await Classroom.findById(classroomId);
+        teacherId = classroom?.teacherId || '';
+        if (!teacherId) {
+          const firstTeacher = await TeacherProfile.findOne();
+          teacherId = firstTeacher?.id || '';
+        }
+      }
     }
 
     const assessment = await Assessment.create({
@@ -230,8 +236,8 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response, next: NextFu
   }
 });
 
-// 4. Update Assessment (Teacher / Admin)
-router.put('/:id', authorizeRoles(Role.TEACHER, Role.ADMIN), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+// 4. Update Assessment (Teacher / Admin / VP / Principal)
+router.put('/:id', authorizeRoles(Role.TEACHER, Role.ADMIN, Role.VICE_PRINCIPAL, Role.PRINCIPAL), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { title, description, type, dueDate, maxMarks, attachmentUrl } = req.body;
     const assessment = await Assessment.findByIdAndUpdate(
@@ -255,8 +261,8 @@ router.put('/:id', authorizeRoles(Role.TEACHER, Role.ADMIN), async (req: Authent
   }
 });
 
-// 5. Delete Assessment (Teacher / Admin)
-router.delete('/:id', authorizeRoles(Role.TEACHER, Role.ADMIN), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+// 5. Delete Assessment (Teacher / Admin / VP / Principal)
+router.delete('/:id', authorizeRoles(Role.TEACHER, Role.ADMIN, Role.VICE_PRINCIPAL, Role.PRINCIPAL), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const assessment = await Assessment.findByIdAndDelete(req.params.id);
     if (!assessment) return next(new AppError('Assessment not found', 404));
