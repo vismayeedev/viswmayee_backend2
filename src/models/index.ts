@@ -161,6 +161,8 @@ const RefreshTokenSchema = new Schema({
   expiresAt: { type: Date, required: true }
 }, schemaOptions);
 
+RefreshTokenSchema.virtual('user', { ref: 'User', localField: 'userId', foreignField: '_id', justOne: true });
+
 // 5. AdminProfile Schema
 const AdminProfileSchema = new Schema({
   _id: { type: String, default: () => crypto.randomUUID() },

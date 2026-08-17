@@ -13,9 +13,16 @@ export class AdminController {
   async createUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const { email, password, firstName, lastName, phone, role, profileData, customRoleId } = req.body;
+      
+      const normalizedEmail = email ? email.trim().toLowerCase() : '';
+      const existingUser = await User.findOne({ email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') } });
+      if (existingUser) {
+        return next(new AppError('A user with this email address already exists', 400));
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
       const user = await userRepository.createUserWithProfile({
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         firstName,
         lastName,

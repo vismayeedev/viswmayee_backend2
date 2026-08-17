@@ -9,6 +9,12 @@ import {
   ParentProfile, 
   StudentProfile, 
   Classroom, 
+  SubjectTeacher,
+  Schedule,
+  Course,
+  Assessment,
+  Attendance,
+  GradeReport,
   CustomRole, 
   Role 
 } from '../models';
@@ -187,8 +193,63 @@ export class UserRepository {
       .populate('customRole');
   }
 
-  async deleteUser(id: string) {
-    return User.findByIdAndDelete(id);
+  async deleteUser(idOrEmail: string) {
+    const queryStr = (idOrEmail || '').trim();
+    if (!queryStr) return null;
+
+    let user = await User.findById(queryStr).catch(() => null);
+    if (!user) {
+      user = await User.findOne({ email: { $regex: new RegExp(`^${queryStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i') } }).catch(() => null);
+    }
+    if (!user) {
+      const teacher = await TeacherProfile.findById(queryStr).catch(() => null);
+      if (teacher) user = await User.findById(teacher.userId).catch(() => null);
+      const student = await StudentProfile.findById(queryStr).catch(() => null);
+      if (student) user = await User.findById(student.userId).catch(() => null);
+      const parent = await ParentProfile.findById(queryStr).catch(() => null);
+      if (parent) user = await User.findById(parent.userId).catch(() => null);
+      const staff = await StaffProfile.findById(queryStr).catch(() => null);
+      if (staff) user = await User.findById(staff.userId).catch(() => null);
+    }
+
+    const userId = user ? String(user._id || user.id) : String(queryStr);
+
+    // Cascade delete related profile records and dependent models
+    const teacherProfile = await TeacherProfile.findOne({ userId });
+    if (teacherProfile) {
+      const teacherId = String(teacherProfile._id || teacherProfile.id);
+      await Classroom.updateMany({ teacherIds: teacherId }, { $pull: { teacherIds: teacherId } });
+      await Classroom.updateMany({ teacherId: teacherId }, { $unset: { teacherId: '' } });
+      await SubjectTeacher.deleteMany({ teacherId });
+      await Schedule.deleteMany({ teacherId });
+      await Course.deleteMany({ teacherId });
+      await Assessment.deleteMany({ teacherId });
+    }
+
+    const studentProfile = await StudentProfile.findOne({ userId });
+    if (studentProfile) {
+      const studentId = String(studentProfile._id || studentProfile.id);
+      await Attendance.deleteMany({ studentId });
+      await GradeReport.deleteMany({ studentId });
+    }
+
+    const parentProfile = await ParentProfile.findOne({ userId });
+    if (parentProfile) {
+      const parentId = String(parentProfile._id || parentProfile.id);
+      await StudentProfile.updateMany({ parentId }, { $unset: { parentId: '' } });
+    }
+
+    // Delete profiles and tokens
+    await AdminProfile.deleteMany({ userId });
+    await PrincipalProfile.deleteMany({ userId });
+    await VicePrincipalProfile.deleteMany({ userId });
+    await TeacherProfile.deleteMany({ userId });
+    await StaffProfile.deleteMany({ userId });
+    await ParentProfile.deleteMany({ userId });
+    await StudentProfile.deleteMany({ userId });
+    await RefreshToken.deleteMany({ userId });
+
+    return User.findByIdAndDelete(userId);
   }
 
   // Token management
