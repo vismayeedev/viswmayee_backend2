@@ -10,8 +10,13 @@ const app = express();
 // Set up Swagger docs
 setupSwagger(app);
 
+const allowedOrigins = [
+  'https://vismayeeschool.com',
+  'https://www.vismayeeschool.com'
+];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: allowedOrigins,
   credentials: true,
 }));
 
